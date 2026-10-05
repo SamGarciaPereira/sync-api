@@ -49,8 +49,6 @@ async function create(userData: UserCreateInput) {
       name: true,
       email: true,
       activatedAt: true,
-      createdAt: true,
-      updatedAt: true,
     },
   });
 
@@ -65,8 +63,6 @@ async function findById(id: string) {
       name: true,
       email: true,
       activatedAt: true,
-      createdAt: true,
-      updatedAt: true,
     },
   });
 
@@ -93,8 +89,6 @@ async function listAll() {
       name: true,
       email: true,
       activatedAt: true,
-      createdAt: true,
-      updatedAt: true,
     },
   });
 }
@@ -116,8 +110,6 @@ async function update(id: string, updateData: UserUpdateInput) {
       name: true,
       email: true,
       activatedAt: true,
-      createdAt: true,
-      updatedAt: true,
     },
   });
 }
