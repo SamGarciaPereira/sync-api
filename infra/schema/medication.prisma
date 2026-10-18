@@ -1,0 +1,91 @@
+enum MedicationForm {
+  TABLET      // Comprimido
+  CAPSULE     // Cápsula
+  DROPS       // Gotas
+  LIQUID      // Xarope
+  INJECTION   // Injetável
+  INHALER     // Bombinha / Inalador
+  TOPICAL     // Pomada / Creme
+  PATCH       // Adesivo Transdérmico
+}
+
+enum DosageUnit {
+  PILULA      // Comprimido(s)
+  MG          // Miligramas
+  ML          // Mililitros
+  GOTAS       // Gotas
+  UI          // Unidades Internacionais
+  JATO        // Jato(s)
+  APLICACAO   // Aplicação
+}
+
+// Catálogo base para busca inteligente e regras de formulário
+model MedicationCatalog {
+  id                  Int            @id @default(autoincrement())
+  name                String         
+  activeIngredient    String?        @map("active_ingredient") 
+  concentration       String?        
+  form                MedicationForm 
+  defaultUnit         DosageUnit     @map("default_unit")
+  allowedUnits        Json           @map("allowed_units")
+  allowsSplitting     Boolean        @default(false) @map("allows_splitting")
+  requiresFasting     Boolean        @default(false) @map("requires_fasting")
+  defaultInstructions String?        @db.Text @map("default_instructions")
+
+  medications         Medication[]
+
+  @@index([name])
+  @@map("medication_catalog")
+}
+
+// Cadastro do medicamento na rotina do paciente/usuário
+model Medication {
+  id                Int                   @id @default(autoincrement())
+  userId            Int                   @map("user_id")
+  catalogId         Int?                  @map("catalog_id")
+  
+  customName        String                @map("custom_name")
+  nickname          String?               
+  form              MedicationForm
+  dosageAmount      Float                 @map("dosage_amount")
+  dosageUnit        DosageUnit            @map("dosage_unit")
+  
+  // Uso contínuo vs Condicional
+  isConditional     Boolean               @default(false) @map("is_conditional")
+  conditionRule     String?               @map("condition_rule")
+  
+  // Período de tratamento
+  startDate         DateTime              @map("start_date")
+  endDate           DateTime?             @map("end_date")
+  
+  // Observações e Identificação Visual
+  notes             String?               @db.Text
+  visualDescription String?               @map("visual_description")
+  
+  // Controle de Estoque e Alertas
+  currentStock      Float                 @default(0) @map("current_stock")
+  minStockAlert     Float                 @default(5) @map("min_stock_alert")
+  alertsEnabled     Boolean               @default(true) @map("alerts_enabled")
+  
+  isActive          Boolean               @default(true) @map("is_active")
+  createdAt         DateTime              @default(now()) @map("created_at")
+  updatedAt         DateTime              @updatedAt @map("updated_at")
+
+  user              User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  catalogItem       MedicationCatalog?    @relation(fields: [catalogId], references: [id], onDelete: SetNull)
+  schedules         MedicationSchedule[]
+
+  @@map("medication")
+}
+
+// Horários vinculados ao medicamento
+model MedicationSchedule {
+  id           Int        @id @default(autoincrement())
+  medicationId Int        @map("medication_id")
+  time         String     
+  daysOfWeek   Json       @map("days_of_week") // Array de dias
+
+  medication   Medication @relation(fields: [medicationId], references: [id], onDelete: Cascade)
+
+  @@map("medication_schedule")
+}
