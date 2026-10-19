@@ -134,6 +134,32 @@ async function create(data: MedicationCreateInput) {
     });
   }
 
+  const resolved = await resolveMedicationData(data);
+
+  // Persistência no banco criando o medicamento e seus horários em transação implícita
+  const createdMedication = await prisma.medication.create({
+    data: {
+      userId: Number(data.userId),
+      ...resolved.fields,
+      schedules: {
+        create: resolved.schedules,
+      },
+    },
+    include: {
+      catalogItem: true,
+      schedules: true,
+    },
+  });
+
+  return createdMedication;
+}
+
+/**
+ * Aplica todas as regras de negócio (catálogo, forma x unidade, fracionamento,
+ * uso condicional, horários e datas) e devolve os dados prontos para gravar.
+ * Usada tanto no cadastro (create) quanto na edição (update).
+ */
+async function resolveMedicationData(data: MedicationCreateInput) {
   let resolvedName = data.customName?.trim();
   let resolvedForm = data.form;
   let allowedUnitsForMedication: DosageUnit[] = [];
@@ -281,10 +307,8 @@ async function create(data: MedicationCreateInput) {
     }
   }
 
-  // 7. Persistência no banco criando o medicamento e seus horários em transação implícita
-  const createdMedication = await prisma.medication.create({
-    data: {
-      userId: Number(data.userId),
+  return {
+    fields: {
       catalogId: data.catalogId ? Number(data.catalogId) : null,
       customName: resolvedName,
       nickname: data.nickname?.trim() || null,
@@ -302,22 +326,33 @@ async function create(data: MedicationCreateInput) {
       minStockAlert:
         data.minStockAlert !== undefined ? Number(data.minStockAlert) : 5,
       alertsEnabled: data.alertsEnabled ?? true,
-      schedules: {
-        create: formattedSchedules,
-      },
     },
-    include: {
-      catalogItem: true,
-      schedules: true,
-    },
-  });
-
-  return createdMedication;
+    schedules: formattedSchedules,
+  };
 }
 
-async function listAll(userId?: number) {
+/**
+ * Valida um identificador vindo da URL (path ou query string).
+ */
+function parseId(value: string | null | undefined, field = "id"): number {
+  const parsed = Number(value);
+
+  if (!value || !Number.isInteger(parsed) || parsed <= 0) {
+    throw new ValidationError({
+      message: `O parâmetro '${field}' é obrigatório e deve ser um número inteiro positivo.`,
+      action: `Informe um '${field}' válido (ex: 1).`,
+    });
+  }
+
+  return parsed;
+}
+
+async function listAll(userId: number, includeInactive = false) {
   return await prisma.medication.findMany({
-    where: userId ? { userId: Number(userId) } : undefined,
+    where: {
+      userId: Number(userId),
+      ...(includeInactive ? {} : { isActive: true }),
+    },
     include: {
       catalogItem: true,
       schedules: true,
@@ -343,6 +378,78 @@ async function findById(id: number) {
   }
 
   return med;
+}
+
+/**
+ * Atualização parcial: mescla os campos enviados com o registro atual e
+ * revalida tudo com as mesmas regras do cadastro. Se 'schedules' for enviado,
+ * substitui todos os horários do medicamento.
+ */
+async function update(id: number, data: MedicationUpdateInput) {
+  const existing = await findById(id);
+
+  const merged: MedicationCreateInput = {
+    userId: existing.userId, // o dono do medicamento não muda
+    catalogId: data.catalogId ?? existing.catalogId ?? undefined,
+    customName: data.customName ?? existing.customName,
+    nickname: data.nickname ?? existing.nickname ?? undefined,
+    form: data.form ?? existing.form,
+    dosageAmount: data.dosageAmount ?? existing.dosageAmount,
+    dosageUnit: data.dosageUnit ?? existing.dosageUnit,
+    isConditional: data.isConditional ?? existing.isConditional,
+    conditionRule: data.conditionRule ?? existing.conditionRule ?? undefined,
+    startDate: data.startDate ?? existing.startDate,
+    endDate: data.endDate !== undefined ? data.endDate : existing.endDate,
+    notes: data.notes ?? existing.notes ?? undefined,
+    visualDescription:
+      data.visualDescription ?? existing.visualDescription ?? undefined,
+    currentStock: data.currentStock ?? existing.currentStock,
+    minStockAlert: data.minStockAlert ?? existing.minStockAlert,
+    alertsEnabled: data.alertsEnabled ?? existing.alertsEnabled,
+    schedules:
+      data.schedules ??
+      existing.schedules.map((schedule) => ({
+        time: schedule.time,
+        daysOfWeek: schedule.daysOfWeek as unknown as number[],
+      })),
+  };
+
+  const resolved = await resolveMedicationData(merged);
+
+  return await prisma.medication.update({
+    where: { id: existing.id },
+    data: {
+      ...resolved.fields,
+      ...(data.isActive !== undefined
+        ? { isActive: Boolean(data.isActive) }
+        : {}),
+      schedules: {
+        deleteMany: {},
+        create: resolved.schedules,
+      },
+    },
+    include: {
+      catalogItem: true,
+      schedules: true,
+    },
+  });
+}
+
+/**
+ * Remoção lógica (soft delete): o medicamento sai da lista do usuário,
+ * mas o registro é mantido para o histórico de doses.
+ */
+async function remove(id: number) {
+  const existing = await findById(id);
+
+  return await prisma.medication.update({
+    where: { id: existing.id },
+    data: { isActive: false },
+    include: {
+      catalogItem: true,
+      schedules: true,
+    },
+  });
 }
 
 /**
@@ -419,6 +526,9 @@ const medication = {
   create,
   listAll,
   findById,
+  update,
+  remove,
+  parseId,
   searchCatalog,
   ensureCatalogSeeded,
 };

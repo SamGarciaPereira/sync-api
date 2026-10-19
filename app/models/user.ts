@@ -55,7 +55,7 @@ async function create(userData: UserCreateInput) {
   return createdUser;
 }
 
-async function findById(id: string) {
+async function findById(id: number) {
   const user = await prisma.user.findUnique({
     where: { id },
     select: {
@@ -93,7 +93,7 @@ async function listAll() {
   });
 }
 
-async function update(id: string, updateData: UserUpdateInput) {
+async function update(id: number, updateData: UserUpdateInput) {
   await findById(id);
 
   const dataToUpdate: Record<string, unknown> = { ...updateData };
@@ -114,7 +114,7 @@ async function update(id: string, updateData: UserUpdateInput) {
   });
 }
 
-async function activate(id: string) {
+async function activate(id: number) {
   await findById(id);
 
   return await prisma.user.update({

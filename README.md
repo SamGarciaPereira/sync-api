@@ -138,11 +138,17 @@ O comando sobe o MySQL, aguarda o banco ficar disponível, aplica as migrations 
 
 ## Endpoints
 
-| Método | Rota          | Descrição                    |
-| ------ | ------------- | ---------------------------- |
-| GET    | `/api/status` | Verifica se a API está no ar |
-| GET    | `/api/users`  | Lista usuários               |
-| POST   | `/api/users`  | Cria um usuário              |
+| Método | Rota                               | Descrição                                                                            |
+| ------ | ---------------------------------- | ------------------------------------------------------------------------------------ |
+| GET    | `/api/status`                      | Verifica se a API está no ar                                                         |
+| GET    | `/api/users`                       | Lista usuários                                                                       |
+| POST   | `/api/users`                       | Cria um usuário                                                                      |
+| GET    | `/api/medications?catalog=true&q=` | Busca no catálogo de medicamentos (autocomplete)                                     |
+| GET    | `/api/medications?userId=`         | Lista os medicamentos ativos do usuário (`includeInactive=true` inclui os removidos) |
+| POST   | `/api/medications`                 | Cadastra um medicamento com horários                                                 |
+| GET    | `/api/medications/:id`             | Detalha um medicamento                                                               |
+| PATCH  | `/api/medications/:id`             | Edita um medicamento (parcial; `schedules` substitui os horários)                    |
+| DELETE | `/api/medications/:id`             | Remove da lista (soft delete: `isActive = false`)                                    |
 
 ## Contribuindo
 
