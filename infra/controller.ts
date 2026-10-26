@@ -7,6 +7,7 @@ import {
   ForbiddenError,
   TooManyRequestsError,
 } from "./errors";
+import session from "../app/models/session";
 
 type NextRouteContext<TParams = Record<string, string | string[]>> = {
   params: Promise<TParams>;
@@ -29,6 +30,7 @@ function handleError(error: unknown): NextResponse {
 
   if (error instanceof UnauthorizedError) {
     const response = NextResponse.json(error, { status: error.statusCode });
+    session.clearCookie(response); // sessão inválida: remove o cookie
     return response;
   }
 
