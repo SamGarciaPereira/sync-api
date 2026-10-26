@@ -15,9 +15,10 @@ async function getHandler(req: NextRequest) {
     return NextResponse.json(suggestions, { status: 200 });
   }
 
-  // Fluxo 2: Listagem de medicamentos cadastrados para o usuário
-  const userId = userIdParam ? Number(userIdParam) : undefined;
-  const medications = await medication.listAll(userId);
+  // Fluxo 2: Listagem de medicamentos cadastrados para o usuário (userId obrigatório)
+  const userId = medication.parseId(userIdParam, "userId");
+  const includeInactive = searchParams.get("includeInactive") === "true";
+  const medications = await medication.listAll(userId, includeInactive);
   return NextResponse.json(medications, { status: 200 });
 }
 
