@@ -111,7 +111,7 @@ cp .env.example .env
 cp .env.example .env.development
 ```
 
-Ajuste `DATABASE_URL` e `DATABASE_NAME` nos arquivos `.env`. O banco de desenvolvimento definido em [`infra/compose.yaml`](infra/compose.yaml) é exposto na porta **15606** do host (e não 3306), então a URL deve apontar para essa porta.
+Ajuste `DATABASE_URL` e `DATABASE_NAME` nos arquivos `.env`. Para o login, defina também `SESSION_SECRET` (segredo que assina a sessão) e `CORS_ORIGIN` (endereço do front, padrão `http://localhost:5173`). O banco de desenvolvimento definido em [`infra/compose.yaml`](infra/compose.yaml) é exposto na porta **15606** do host (e não 3306), então a URL deve apontar para essa porta.
 
 ```bash
 npm run dev
@@ -138,17 +138,22 @@ O comando sobe o MySQL, aguarda o banco ficar disponível, aplica as migrations 
 
 ## Endpoints
 
-| Método | Rota                               | Descrição                                                                            |
-| ------ | ---------------------------------- | ------------------------------------------------------------------------------------ |
-| GET    | `/api/status`                      | Verifica se a API está no ar                                                         |
-| GET    | `/api/users`                       | Lista usuários                                                                       |
-| POST   | `/api/users`                       | Cria um usuário                                                                      |
-| GET    | `/api/medications?catalog=true&q=` | Busca no catálogo de medicamentos (autocomplete)                                     |
-| GET    | `/api/medications?userId=`         | Lista os medicamentos ativos do usuário (`includeInactive=true` inclui os removidos) |
-| POST   | `/api/medications`                 | Cadastra um medicamento com horários                                                 |
-| GET    | `/api/medications/:id`             | Detalha um medicamento                                                               |
-| PATCH  | `/api/medications/:id`             | Edita um medicamento (parcial; `schedules` substitui os horários)                    |
-| DELETE | `/api/medications/:id`             | Remove da lista (soft delete: `isActive = false`)                                    |
+| Método | Rota                               | Descrição                                                                                      |
+| ------ | ---------------------------------- | ---------------------------------------------------------------------------------------------- |
+| GET    | `/api/status`                      | Verifica se a API está no ar                                                                   |
+| GET    | `/api/users`                       | Lista usuários                                                                                 |
+| POST   | `/api/users`                       | Cadastro: `name`, `email`, `password` (mín. 6) e `birthDate` (`AAAA-MM-DD`)                    |
+| POST   | `/api/sessions`                    | Login (`email`, `password`): grava o cookie de sessão `sync_session`                           |
+| DELETE | `/api/sessions`                    | Logout: apaga o cookie de sessão                                                               |
+| GET    | `/api/user`                        | Dados do usuário logado 🔒                                                                     |
+| GET    | `/api/medications?catalog=true&q=` | Busca no catálogo de medicamentos (autocomplete)                                               |
+| GET    | `/api/medications`                 | Lista os medicamentos ativos do usuário logado 🔒 (`includeInactive=true` inclui os removidos) |
+| POST   | `/api/medications`                 | Cadastra um medicamento para o usuário logado 🔒                                               |
+| GET    | `/api/medications/:id`             | Detalha um medicamento do usuário logado 🔒                                                    |
+| PATCH  | `/api/medications/:id`             | Edita um medicamento (parcial; `schedules` substitui os horários) 🔒                           |
+| DELETE | `/api/medications/:id`             | Remove da lista (soft delete: `isActive = false`) 🔒                                           |
+
+🔒 Exige login: sem o cookie de sessão a resposta é `401`. Medicamentos de outro usuário respondem `404`.
 
 ## Contribuindo
 
