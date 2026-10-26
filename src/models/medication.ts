@@ -361,7 +361,11 @@ async function listAll(userId: number, includeInactive = false) {
   });
 }
 
-async function findById(id: number) {
+/**
+ * Busca um medicamento. Com `userId`, só encontra se pertencer a esse usuário
+ * (medicamento de outra pessoa responde 404, sem revelar que existe).
+ */
+async function findById(id: number, userId?: number) {
   const med = await prisma.medication.findUnique({
     where: { id: Number(id) },
     include: {
@@ -370,7 +374,7 @@ async function findById(id: number) {
     },
   });
 
-  if (!med) {
+  if (!med || (userId !== undefined && med.userId !== userId)) {
     throw new NotFoundError({
       message: `Medicamento com o ID '${id}' não foi encontrado.`,
       action: "Verifique se o identificador informado está correto.",
@@ -385,8 +389,12 @@ async function findById(id: number) {
  * revalida tudo com as mesmas regras do cadastro. Se 'schedules' for enviado,
  * substitui todos os horários do medicamento.
  */
-async function update(id: number, data: MedicationUpdateInput) {
-  const existing = await findById(id);
+async function update(
+  id: number,
+  data: MedicationUpdateInput,
+  userId?: number,
+) {
+  const existing = await findById(id, userId);
 
   const merged: MedicationCreateInput = {
     userId: existing.userId, // o dono do medicamento não muda
@@ -439,8 +447,8 @@ async function update(id: number, data: MedicationUpdateInput) {
  * Remoção lógica (soft delete): o medicamento sai da lista do usuário,
  * mas o registro é mantido para o histórico de doses.
  */
-async function remove(id: number) {
-  const existing = await findById(id);
+async function remove(id: number, userId?: number) {
+  const existing = await findById(id, userId);
 
   return await prisma.medication.update({
     where: { id: existing.id },

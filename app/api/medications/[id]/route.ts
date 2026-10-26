@@ -1,32 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
 import controller from "../../../../infra/controller";
 import medication from "../../../../src/models/medication";
+import session from "../../../../app/models/session";
 
 type RouteParams = { id: string };
 type RouteContext = { params: Promise<RouteParams> };
 
 // Detalhe de um medicamento (com horários e item do catálogo)
-async function getHandler(_req: NextRequest, { params }: RouteContext) {
+async function getHandler(req: NextRequest, { params }: RouteContext) {
+  const userId = await session.getUserId(req);
   const { id } = await params;
-  const found = await medication.findById(medication.parseId(id));
+  const found = await medication.findById(medication.parseId(id), userId);
   return NextResponse.json(found, { status: 200 });
 }
 
 // Edição parcial: envia só os campos que mudaram
 async function patchHandler(req: NextRequest, { params }: RouteContext) {
+  const userId = await session.getUserId(req);
   const { id } = await params;
   const body = await req.json();
   const updatedMedication = await medication.update(
     medication.parseId(id),
     body,
+    userId,
   );
   return NextResponse.json(updatedMedication, { status: 200 });
 }
 
 // Remoção lógica: marca como inativo e tira da listagem
-async function deleteHandler(_req: NextRequest, { params }: RouteContext) {
+async function deleteHandler(req: NextRequest, { params }: RouteContext) {
+  const userId = await session.getUserId(req);
   const { id } = await params;
-  const removedMedication = await medication.remove(medication.parseId(id));
+  const removedMedication = await medication.remove(
+    medication.parseId(id),
+    userId,
+  );
   return NextResponse.json(removedMedication, { status: 200 });
 }
 
