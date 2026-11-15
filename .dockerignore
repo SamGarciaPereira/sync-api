@@ -1,0 +1,29 @@
+# Dependências e artefatos (regerados no build)
+node_modules
+.next
+dist
+src/generated
+coverage
+
+# Dados locais / volumes
+mysql_data
+
+# Git e metadados
+.git
+.gitignore
+.github
+.husky
+.vscode
+
+# Segredos e envs (injetados em runtime via env_file)
+.env
+.env.*
+
+# Infra do Docker (não precisa ir pra imagem)
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# Logs e misc
+*.log
+*.md
