@@ -37,12 +37,9 @@ const FILTER_LABELS: Record<HistoryFilter, string> = {
   all: "Tudo",
   doses: "Doses tomadas",
   alarms: "Alarmes",
-  sos: "Ligações SOS",
+  sos: "Pedidos de ajuda (SOS)",
   finished: "Medicamentos terminados",
 };
-
-// TODO(SOS): remover quando o botão SOS existir e gravar eventos SOS_CALL.
-const SOS_PENDING = "Sem registro (botão SOS em desenvolvimento)";
 
 const MARGIN = 50;
 const FOOTER_SPACE = 30;
@@ -90,7 +87,7 @@ function eventLabel(event: HistoryEvent) {
     case "ALARM":
       return "Alarme disparado";
     case "SOS_CALL":
-      return "Ligação SOS";
+      return "Pedido de ajuda (SOS)";
     case "MEDICATION_FINISHED":
       return event.finishedReason === "REMOVED"
         ? "Medicamento removido"
@@ -108,21 +105,25 @@ function eventDetails(event: HistoryEvent) {
   }
   if (event.type === "ALARM") return reminder || "—";
   if (event.type === "MEDICATION_FINISHED") return event.dosageLabel || "—";
-  return "—";
+  return sosDetails(event) || "—";
+}
+
+/** "Aviso enviado a 2 de 3 contatos" — resultado do envio pelo WhatsApp. */
+function sosDetails(item: {
+  recipientsCount: number | null;
+  sentCount: number | null;
+}) {
+  if (item.recipientsCount === null || item.sentCount === null) return null;
+  const contacts = item.recipientsCount === 1 ? "contato" : "contatos";
+  return `Aviso enviado a ${item.sentCount} de ${item.recipientsCount} ${contacts}`;
 }
 
 function summaryText(item: HistorySummaryItem | null, empty: string) {
   if (!item) return empty;
   const parts = [formatDateTime(item.occurredAt), item.medicationName];
   if (item.scheduledTime) parts.push(`lembrete das ${item.scheduledTime}`);
+  parts.push(sosDetails(item));
   return parts.filter(Boolean).join(" · ");
-}
-
-function emptyMessage(filter: HistoryFilter) {
-  if (filter === "sos") {
-    return "O botão SOS ainda está em desenvolvimento: não há ligações registradas.";
-  }
-  return "Nenhum registro encontrado para este filtro e período.";
 }
 
 /** Monta o PDF do histórico e devolve o arquivo em memória. */
@@ -197,7 +198,10 @@ function build(data: HistoryReportData): Promise<Buffer> {
         summaryText(data.summary.lastDose, "Sem registro"),
       ],
       ["Último alarme", summaryText(data.summary.lastAlarm, "Sem registro")],
-      ["Última ligação SOS", summaryText(data.summary.lastSos, SOS_PENDING)],
+      [
+        "Último pedido de ajuda (SOS)",
+        summaryText(data.summary.lastSos, "Sem registro"),
+      ],
     ];
     doc.fontSize(10);
     for (const [label, value] of summaryLines) {
@@ -267,7 +271,7 @@ function build(data: HistoryReportData): Promise<Buffer> {
         .font("Helvetica")
         .fontSize(10)
         .fillColor(COLORS.muted)
-        .text(emptyMessage(data.filter), MARGIN);
+        .text("Nenhum registro encontrado para este filtro e período.", MARGIN);
     } else {
       drawHeaderRow();
       for (const event of data.events) {
