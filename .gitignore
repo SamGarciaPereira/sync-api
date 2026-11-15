@@ -33,8 +33,11 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # env files (can opt-in for committing if needed)
+# NUNCA versionar os .env com segredos reais; só os *.example vão pro git.
 .env
 .env.development
+.env.production
+.env*.local
 
 # vercel
 .vercel
