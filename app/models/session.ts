@@ -21,10 +21,14 @@ function getSecretKey() {
 }
 
 function cookieOptions(maxAge: number) {
+  const isProd = process.env.NODE_ENV === "production";
   return {
     httpOnly: true, // o JavaScript do navegador não consegue ler o cookie
-    sameSite: "lax" as const,
-    secure: process.env.NODE_ENV === "production",
+    // Front (Vercel, *.vercel.app) e API ficam em sites diferentes: em produção o
+    // cookie precisa de SameSite=None + Secure para ser enviado nas chamadas cross-site.
+    // Em dev (http/localhost) o navegador rejeita None sem Secure, então usamos "lax".
+    sameSite: (isProd ? "none" : "lax") as "none" | "lax",
+    secure: isProd,
     path: "/",
     maxAge,
   };

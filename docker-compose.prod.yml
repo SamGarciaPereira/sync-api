@@ -1,0 +1,142 @@
+# Stack de produção do SYNC (backend + worker + MySQL + Evolution DEDICADA).
+# Totalmente isolada de qualquer outra stack da VPS: projeto "sync", rede e
+# volumes próprios, containers nomeados e sem portas públicas desnecessárias.
+#
+# Subir:
+#   docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+#
+# O --env-file é necessário para as variáveis ${...} interpoladas abaixo.
+name: sync
+
+services:
+  # ---------- API (Next.js) ----------
+  sync-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sync-api:latest
+    container_name: sync-api
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    depends_on:
+      sync-mysql:
+        condition: service_healthy
+    # Exposto só no localhost: seu reverse proxy (nginx/Caddy/Traefik) publica em HTTPS.
+    # Porta configurável (SYNC_API_PORT) para não colidir com outro sistema na VPS.
+    # Se o proxy roda em Docker, remova esta porta e conecte-o à rede "sync-net".
+    ports:
+      - "127.0.0.1:${SYNC_API_PORT:-3001}:3001"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3001/api/status').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - sync-net
+
+  # ---------- Worker de lembretes (node-cron) ----------
+  sync-worker:
+    image: sync-api:latest
+    container_name: sync-worker
+    restart: unless-stopped
+    command: ["node", "infra/scripts/reminders-worker.js"]
+    env_file:
+      - .env.production
+    environment:
+      # O worker chama a API pela rede interna, não pelo domínio público.
+      PUBLIC_API_URL: "http://sync-api:3001/api"
+    depends_on:
+      sync-api:
+        condition: service_healthy
+    networks:
+      - sync-net
+
+  # ---------- Banco da aplicação ----------
+  sync-mysql:
+    image: mysql:8.0
+    container_name: sync-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-troque-no-env}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-sync}
+      MYSQL_USER: ${MYSQL_USER:-sync}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-troque-no-env}
+    volumes:
+      - sync_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+    networks:
+      - sync-net
+
+  # ---------- Evolution API DEDICADA ao SYNC (isolada da sua outra Evolution) ----------
+  sync-evolution:
+    image: evoapicloud/evolution-api:v2.3.7
+    container_name: sync-evolution
+    restart: unless-stopped
+    # Sem porta pública: só a sync-api acessa por http://sync-evolution:8080 na rede interna.
+    # Para parear o QR, use um túnel temporário (ver README) ou publique em 127.0.0.1:8081.
+    environment:
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:?defina EVOLUTION_API_KEY no .env.production}
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://evolution:${EVOLUTION_PG_PASSWORD:-evolution}@sync-evolution-pg:5432/evolution
+      DATABASE_CONNECTION_CLIENT_NAME: sync_evolution
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "false"
+      DATABASE_SAVE_MESSAGE_UPDATE: "false"
+      DATABASE_SAVE_DATA_CONTACTS: "false"
+      DATABASE_SAVE_DATA_CHATS: "false"
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://sync-evolution-redis:6379/6
+      CACHE_REDIS_PREFIX_KEY: sync_evolution
+      CACHE_REDIS_SAVE_INSTANCES: "false"
+      CACHE_LOCAL_ENABLED: "false"
+    depends_on:
+      - sync-evolution-pg
+      - sync-evolution-redis
+    volumes:
+      - sync_evolution_instances:/evolution/instances
+    networks:
+      - sync-net
+
+  sync-evolution-pg:
+    image: postgres:16
+    container_name: sync-evolution-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: evolution
+      POSTGRES_PASSWORD: ${EVOLUTION_PG_PASSWORD:-evolution}
+      POSTGRES_DB: evolution
+    volumes:
+      - sync_evolution_pg:/var/lib/postgresql/data
+    networks:
+      - sync-net
+
+  sync-evolution-redis:
+    image: redis:7
+    container_name: sync-evolution-redis
+    restart: unless-stopped
+    volumes:
+      - sync_evolution_redis:/data
+    networks:
+      - sync-net
+
+networks:
+  sync-net:
+    name: sync-net
+
+volumes:
+  sync_mysql_data:
+  sync_evolution_instances:
+  sync_evolution_pg:
+  sync_evolution_redis:
