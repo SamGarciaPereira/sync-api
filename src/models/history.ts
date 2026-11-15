@@ -32,18 +32,23 @@ export interface HistoryEvent {
   dosageLabel: string | null;
   scheduledTime: string | null; // "HH:mm" do lembrete, quando houver
   finishedReason: FinishedReason | null; // só em MEDICATION_FINISHED
+  /** Só em SOS_CALL: contatos de emergência existentes e quantos foram avisados. */
+  recipientsCount: number | null;
+  sentCount: number | null;
 }
 
 export interface HistorySummaryItem {
   occurredAt: Date;
   medicationName: string | null;
   scheduledTime: string | null;
+  recipientsCount: number | null;
+  sentCount: number | null;
 }
 
 export interface HistorySummary {
   lastDose: HistorySummaryItem | null;
   lastAlarm: HistorySummaryItem | null;
-  /** Sempre null até o botão SOS existir e passar a gravar `SOS_CALL`. */
+  /** Último acionamento do botão de SOS (tabela sos_event). */
   lastSos: HistorySummaryItem | null;
 }
 
@@ -167,32 +172,62 @@ async function doseEvents(
     dosageLabel: dosageLabel(row.medication),
     scheduledTime: row.scheduledTime,
     finishedReason: null,
+    recipientsCount: null,
+    sentCount: null,
   }));
 }
 
-async function activityEvents(
+async function alarmEvents(
   userId: number,
-  type: "ALARM" | "SOS_CALL",
   from: Date | null,
   to: Date | null,
   take: number,
 ): Promise<HistoryEvent[]> {
   const rows = await prisma.activityEvent.findMany({
-    where: { userId, type, occurredAt: dateRange(from, to) },
+    where: { userId, type: "ALARM", occurredAt: dateRange(from, to) },
     include: { medication: { select: medicationSelect } },
     orderBy: { occurredAt: "desc" },
     take,
   });
 
   return rows.map((row) => ({
-    id: `${type === "ALARM" ? "alarm" : "sos"}-${row.id}`,
-    type,
+    id: `alarm-${row.id}`,
+    type: "ALARM",
     occurredAt: row.occurredAt,
     medicationId: row.medicationId,
     medicationName: medicationName(row.medication),
     dosageLabel: dosageLabel(row.medication),
     scheduledTime: row.scheduledTime,
     finishedReason: null,
+    recipientsCount: null,
+    sentCount: null,
+  }));
+}
+
+/** Acionamentos do botão de SOS, gravados por POST /sos na tabela sos_event. */
+async function sosEvents(
+  userId: number,
+  from: Date | null,
+  to: Date | null,
+  take: number,
+): Promise<HistoryEvent[]> {
+  const rows = await prisma.sosEvent.findMany({
+    where: { userId, createdAt: dateRange(from, to) },
+    orderBy: { createdAt: "desc" },
+    take,
+  });
+
+  return rows.map((row) => ({
+    id: `sos-${row.id}`,
+    type: "SOS_CALL",
+    occurredAt: row.createdAt,
+    medicationId: null,
+    medicationName: null,
+    dosageLabel: null,
+    scheduledTime: null,
+    finishedReason: null,
+    recipientsCount: row.recipientsCount,
+    sentCount: row.sentCount,
   }));
 }
 
@@ -243,6 +278,8 @@ async function finishedEvents(
         dosageLabel: dosageLabel(med),
         scheduledTime: null,
         finishedReason: removed ? "REMOVED" : "COMPLETED",
+        recipientsCount: null,
+        sentCount: null,
       };
     })
     .sort((a, b) => b.occurredAt.getTime() - a.occurredAt.getTime())
@@ -265,8 +302,8 @@ async function list(
 
   const sources = await Promise.all([
     wants("doses") ? doseEvents(userId, from, to, take) : [],
-    wants("alarms") ? activityEvents(userId, "ALARM", from, to, take) : [],
-    wants("sos") ? activityEvents(userId, "SOS_CALL", from, to, take) : [],
+    wants("alarms") ? alarmEvents(userId, from, to, take) : [],
+    wants("sos") ? sosEvents(userId, from, to, take) : [],
     wants("finished") ? finishedEvents(userId, from, to, take, now) : [],
   ]);
 
@@ -284,8 +321,8 @@ async function list(
 async function summary(userId: number): Promise<HistorySummary> {
   const [lastDose, lastAlarm, lastSos] = await Promise.all([
     doseEvents(userId, null, null, 1),
-    activityEvents(userId, "ALARM", null, null, 1),
-    activityEvents(userId, "SOS_CALL", null, null, 1),
+    alarmEvents(userId, null, null, 1),
+    sosEvents(userId, null, null, 1),
   ]);
 
   const pick = (events: HistoryEvent[]): HistorySummaryItem | null =>
@@ -294,6 +331,8 @@ async function summary(userId: number): Promise<HistorySummary> {
           occurredAt: events[0].occurredAt,
           medicationName: events[0].medicationName,
           scheduledTime: events[0].scheduledTime,
+          recipientsCount: events[0].recipientsCount,
+          sentCount: events[0].sentCount,
         }
       : null;
 
