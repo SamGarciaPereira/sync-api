@@ -1,0 +1,40 @@
+// Contatos de emergência (US26) e registro dos acionamentos do botão de SOS (US25).
+// O SOS envia uma mensagem de socorro pelo WhatsApp (via Evolution API) para cada
+// contato cadastrado pelo idoso.
+
+model EmergencyContact {
+  id           Int      @id @default(autoincrement())
+  userId       Int      @map("user_id")
+  name         String
+  // Telefone normalizado em formato internacional (ex.: +5541999998888).
+  phone        String   @db.VarChar(20)
+  // Parentesco/relação opcional (ex.: "Filha", "Vizinho").
+  relationship String?  @db.VarChar(60)
+  // Contato principal: o primeiro a ser avisado. Só um por usuário.
+  isPrimary    Boolean  @default(false) @map("is_primary")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("emergency_contact")
+}
+
+// Registro de cada vez que o idoso aciona o botão de SOS — base para histórico
+// e para familiares acompanharem os pedidos de ajuda.
+model SosEvent {
+  id              Int      @id @default(autoincrement())
+  userId          Int      @map("user_id")
+  // Localização capturada no momento do acionamento (quando permitida).
+  latitude        Float?
+  longitude       Float?
+  // Quantos contatos existiam e para quantos a mensagem saiu com sucesso.
+  recipientsCount Int      @default(0) @map("recipients_count")
+  sentCount       Int      @default(0) @map("sent_count")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("sos_event")
+}
