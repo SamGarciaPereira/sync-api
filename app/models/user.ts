@@ -1,5 +1,6 @@
 import { prisma } from "../../infra/prisma";
 import { ValidationError, NotFoundError } from "../../infra/errors";
+import { normalizePhone } from "../../src/lib/phone";
 import bcrypt from "bcryptjs";
 
 export interface UserCreateInput {
@@ -41,7 +42,8 @@ function normalizeEmail(email: string) {
  * no passado e depois de 1900.
  */
 function parseBirthDate(value: string | Date): Date {
-  const isoDate = typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+  const isoDate =
+    typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
   const date = isoDate
     ? new Date(`${value}T00:00:00.000Z`)
     : value instanceof Date
@@ -69,31 +71,6 @@ function parseBirthDate(value: string | Date): Date {
   return date;
 }
 
-/**
- * Valida um telefone brasileiro (DDD + número, com ou sem +55) e devolve
- * no formato internacional "+5541999998888", pronto para uso no WhatsApp.
- */
-function normalizePhone(value: string): string {
-  let digits = value.replace(/\D/g, "");
-
-  if ((digits.length === 12 || digits.length === 13) && digits.startsWith("55")) {
-    digits = digits.slice(2);
-  }
-
-  const validDdd = /^[1-9]{2}/.test(digits);
-  const validLength =
-    digits.length === 10 || (digits.length === 11 && digits[2] === "9");
-
-  if (!validDdd || !validLength) {
-    throw new ValidationError({
-      message: "O telefone informado não é válido.",
-      action: "Informe DDD e número (ex.: (41) 99999-8888).",
-    });
-  }
-
-  return `+55${digits}`;
-}
-
 async function create(userData: UserCreateInput) {
   // O JSON recebido da API pode conter null, arrays ou valores de outros tipos.
   if (
@@ -104,7 +81,8 @@ async function create(userData: UserCreateInput) {
     typeof userData.password !== "string"
   ) {
     throw new ValidationError({
-      message: "Os campos 'name', 'email' e 'password' devem ser textos válidos.",
+      message:
+        "Os campos 'name', 'email' e 'password' devem ser textos válidos.",
       action: "Confira os campos enviados no cadastro.",
     });
   }
@@ -136,10 +114,8 @@ async function create(userData: UserCreateInput) {
   const birthDate = userData.birthDate
     ? parseBirthDate(userData.birthDate)
     : null;
-  
-  const phone = userData.phone 
-    ? normalizePhone(userData.phone)
-    : null;
+
+  const phone = userData.phone ? normalizePhone(userData.phone) : null;
 
   const existingUser = await prisma.user.findUnique({
     where: { email },

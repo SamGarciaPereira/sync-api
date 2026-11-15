@@ -12,5 +12,55 @@ services:
     volumes:
       - ../mysql_data:/var/lib/mysql
 
+  # --- SOS / WhatsApp: Evolution API (modo Baileys) ---
+  # Permite o backend ENVIAR mensagens de WhatsApp sozinho (botão de SOS).
+  # Após subir, é preciso criar a instância e escanear o QR uma vez (ver README).
+  evolution-api:
+    image: evoapicloud/evolution-api:v2.3.7
+    container_name: evolution-api-dev
+    ports:
+      - "8080:8080"
+    environment:
+      # A MESMA chave deve ir em EVOLUTION_API_KEY no .env.development da API.
+      AUTHENTICATION_API_KEY: sync-evolution-dev-key
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://evolution:evolution@evolution-postgres:5432/evolution
+      DATABASE_CONNECTION_CLIENT_NAME: evolution
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "false"
+      DATABASE_SAVE_MESSAGE_UPDATE: "false"
+      DATABASE_SAVE_DATA_CONTACTS: "false"
+      DATABASE_SAVE_DATA_CHATS: "false"
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://evolution-redis:6379/6
+      CACHE_REDIS_PREFIX_KEY: evolution
+      CACHE_REDIS_SAVE_INSTANCES: "false"
+      CACHE_LOCAL_ENABLED: "false"
+    depends_on:
+      - evolution-postgres
+      - evolution-redis
+    volumes:
+      - evolution_instances:/evolution/instances
+
+  evolution-postgres:
+    image: postgres:16
+    container_name: evolution-postgres-dev
+    environment:
+      POSTGRES_USER: evolution
+      POSTGRES_PASSWORD: evolution
+      POSTGRES_DB: evolution
+    volumes:
+      - evolution_postgres:/var/lib/postgresql/data
+
+  evolution-redis:
+    image: redis:7
+    container_name: evolution-redis-dev
+    volumes:
+      - evolution_redis:/data
+
 volumes:
   mysql_data:
+  evolution_instances:
+  evolution_postgres:
+  evolution_redis:

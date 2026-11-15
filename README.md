@@ -152,8 +152,48 @@ O comando sobe o MySQL, aguarda o banco ficar disponível, aplica as migrations 
 | GET    | `/api/medications/:id`             | Detalha um medicamento do usuário logado 🔒                                                    |
 | PATCH  | `/api/medications/:id`             | Edita um medicamento (parcial; `schedules` substitui os horários) 🔒                           |
 | DELETE | `/api/medications/:id`             | Remove da lista (soft delete: `isActive = false`) 🔒                                           |
+| GET    | `/api/emergency-contacts`          | Lista os contatos de emergência do usuário (US26) 🔒                                           |
+| POST   | `/api/emergency-contacts`          | Cadastra um contato: `name`, `phone`, `relationship?`, `isPrimary?` 🔒                         |
+| PATCH  | `/api/emergency-contacts/:id`      | Edita um contato (parcial) 🔒                                                                  |
+| DELETE | `/api/emergency-contacts/:id`      | Remove um contato 🔒                                                                           |
+| POST   | `/api/sos`                         | Aciona o SOS (US25): envia WhatsApp aos contatos; corpo opcional `latitude`, `longitude` 🔒    |
+| GET    | `/api/sos`                         | Histórico de acionamentos do SOS do usuário 🔒                                                 |
 
 🔒 Exige login: sem o cookie de sessão a resposta é `401`. Medicamentos de outro usuário respondem `404`.
+
+## SOS e WhatsApp (Evolution API)
+
+O **botão de SOS (US25)** faz a API **enviar uma mensagem de WhatsApp** (nome do idoso + link de localização) para os **contatos de emergência (US26)**. O envio usa a [Evolution API](https://github.com/EvolutionAPI/evolution-api) em **modo Baileys** (WhatsApp Web, não oficial), já incluída no [`infra/compose.yaml`](infra/compose.yaml).
+
+> ⚠️ O Baileys é não oficial: há risco de bloqueio do número e a instância precisa ficar conectada. Adequado para o MVP/demonstração. Para produção, migrar para a Cloud API oficial (a integração fica isolada em [`src/lib/evolution.ts`](src/lib/evolution.ts)).
+
+### Variáveis de ambiente
+
+| Variável             | Descrição                                     | Padrão de dev            |
+| -------------------- | --------------------------------------------- | ------------------------ |
+| `EVOLUTION_API_URL`  | URL do container da Evolution API             | `http://localhost:8080`  |
+| `EVOLUTION_API_KEY`  | A mesma `AUTHENTICATION_API_KEY` do container | `sync-evolution-dev-key` |
+| `EVOLUTION_INSTANCE` | Nome da instância pareada                     | `sync`                   |
+
+### Pareamento (uma vez)
+
+Com os containers no ar (`npm run services:up` ou `npm run dev`):
+
+```bash
+# 1. Cria a instância "sync" em modo Baileys
+curl -X POST http://localhost:8080/instance/create \
+  -H "apikey: sync-evolution-dev-key" \
+  -H "Content-Type: application/json" \
+  -d '{"instanceName":"sync","integration":"WHATSAPP-BAILEYS","qrcode":true}'
+
+# 2. Pega o QR Code para escanear (abra o base64 retornado ou use o painel em http://localhost:8080)
+curl http://localhost:8080/instance/connect/sync -H "apikey: sync-evolution-dev-key"
+
+# 3. Confirma que conectou (state deve ser "open")
+curl http://localhost:8080/instance/connectionState/sync -H "apikey: sync-evolution-dev-key"
+```
+
+Escaneie o QR com o WhatsApp do **número do SYNC** (um número dedicado). Se a instância cair, repita o passo 2. Enquanto não estiver `open`, o endpoint `/api/sos` responde **503** e o app oferece o envio manual (links `wa.me`) como alternativa.
 
 ## Contribuindo
 
